@@ -106,7 +106,7 @@ public class TupleDesc implements Serializable {
         if (i >=  0 && i < tdItemList.size()) {
             return tdItemList.get(i).fieldName;
         } else {
-            throw new NoSuchElementException();
+            throw new NoSuchElementException("i is not a valid field reference.");
         }
     }
 
@@ -124,7 +124,7 @@ public class TupleDesc implements Serializable {
         if (i >=  0 && i < tdItemList.size()) {
             return tdItemList.get(i).fieldType;
         } else {
-            throw new NoSuchElementException();
+            throw new NoSuchElementException("i is not a valid field reference.");
         }
     }
 
@@ -145,7 +145,7 @@ public class TupleDesc implements Serializable {
                 return i;
             }
         }
-        throw new NoSuchElementException();
+        throw new NoSuchElementException("no field with a matching name is found.");
     }
 
     /**

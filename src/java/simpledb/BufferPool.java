@@ -1,6 +1,8 @@
 package simpledb;
 
-import java.io.*;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.LinkedList;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -19,6 +21,15 @@ public class BufferPool {
     other classes. BufferPool should use the numPages argument to the
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
+    
+    /** Maximum number of pages in buffer pool. */
+    private int numPages;
+    /** Pointers to buffer pool pages. */
+    private Page[] bufferedPages;
+    /** Records the mapping between PageId and its location in buffer pool. */
+    private HashMap<PageId, Integer> pageLookupTable;
+    /** Records free pages in buffer pool. */
+    private LinkedList<Integer> freeList;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -26,7 +37,13 @@ public class BufferPool {
      * @param numPages maximum number of pages in this buffer pool.
      */
     public BufferPool(int numPages) {
-        // some code goes here
+        this.numPages = numPages;
+        bufferedPages = new Page[numPages];
+        freeList = new LinkedList<Integer>();
+        for (int i = 0; i < numPages; i++) {
+            freeList.add(i);
+        }
+        pageLookupTable = new HashMap<PageId, Integer>();
     }
 
     /**
@@ -44,10 +61,20 @@ public class BufferPool {
      * @param pid the ID of the requested page
      * @param perm the requested permissions on the page
      */
-    public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
+    public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
-        // some code goes here
-        return null;
+        // TODO: add code for handling locks
+        Integer loc = pageLookupTable.get(pid);
+        if (loc != null) {
+            return bufferedPages[loc];
+        }
+        if (pageLookupTable.size() == numPages) {
+            throw new DbException(null);
+        }
+        int newLoc = freeList.pop();
+        int tableId = pid.getTableId();
+        bufferedPages[newLoc] = Database.getCatalog().getDbFile(tableId).readPage(pid);
+        return bufferedPages[newLoc];
     }
 
     /**
@@ -59,7 +86,7 @@ public class BufferPool {
      * @param tid the ID of the transaction requesting the unlock
      * @param pid the ID of the page to unlock
      */
-    public  void releasePage(TransactionId tid, PageId pid) {
+    public void releasePage(TransactionId tid, PageId pid) {
         // some code goes here
         // not necessary for proj1
     }
@@ -127,7 +154,7 @@ public class BufferPool {
      * @param tid the transaction adding the tuple.
      * @param t the tuple to add
      */
-    public  void deleteTuple(TransactionId tid, Tuple t)
+    public void deleteTuple(TransactionId tid, Tuple t)
         throws DbException, TransactionAbortedException {
         // some code goes here
         // not necessary for proj1
@@ -158,14 +185,14 @@ public class BufferPool {
      * Flushes a certain page to disk
      * @param pid an ID indicating the page to flush
      */
-    private synchronized  void flushPage(PageId pid) throws IOException {
+    private synchronized void flushPage(PageId pid) throws IOException {
         // some code goes here
         // not necessary for proj1
     }
 
     /** Write all pages of the specified transaction to disk.
      */
-    public synchronized  void flushPages(TransactionId tid) throws IOException {
+    public synchronized void flushPages(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for proj1
     }
@@ -174,7 +201,7 @@ public class BufferPool {
      * Discards a page from the buffer pool.
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
-    private synchronized  void evictPage() throws DbException {
+    private synchronized void evictPage() throws DbException {
         // some code goes here
         // not necessary for proj1
     }

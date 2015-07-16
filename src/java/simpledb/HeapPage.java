@@ -53,7 +53,7 @@ public class HeapPage implements Page {
             tuples = new Tuple[numSlots];
             for (int i=0; i<tuples.length; i++)
                 tuples[i] = readNextTuple(dis,i);
-        }catch(NoSuchElementException e){
+        } catch (NoSuchElementException e) {
             e.printStackTrace();
         }
         dis.close();
@@ -65,8 +65,8 @@ public class HeapPage implements Page {
         @return the number of tuples on this page
     */
     private int getNumTuples() {        
-        // some code goes here
-        return 0;
+        return (int) Math.floor((BufferPool.PAGE_SIZE * 8) / 
+                (td.getSize() * 8 + 1.0));
 
     }
 
@@ -75,10 +75,7 @@ public class HeapPage implements Page {
      * @return the number of bytes in the header of a page in a HeapFile with each tuple occupying tupleSize bytes
      */
     private int getHeaderSize() {        
-        
-        // some code goes here
-        return 0;
-                 
+        return (int) Math.ceil(getNumTuples() / 8.0);         
     }
     
     /** Return a view of this page before it was modified
@@ -102,8 +99,7 @@ public class HeapPage implements Page {
      * @return the PageId associated with this page.
      */
     public HeapPageId getId() {
-    // some code goes here
-    throw new UnsupportedOperationException("implement this");
+        return pid;
     }
 
     /**
@@ -256,7 +252,7 @@ public class HeapPage implements Page {
      */
     public void markDirty(boolean dirty, TransactionId tid) {
         // some code goes here
-	// not necessary for lab1
+        // not necessary for lab1
     }
 
     /**
@@ -264,7 +260,7 @@ public class HeapPage implements Page {
      */
     public TransactionId isDirty() {
         // some code goes here
-	// Not necessary for lab1
+        // Not necessary for lab1
         return null;      
     }
 
@@ -272,16 +268,31 @@ public class HeapPage implements Page {
      * Returns the number of empty slots on this page.
      */
     public int getNumEmptySlots() {
-        // some code goes here
-        return 0;
+        int count = 0;
+        int result = 0;
+        
+        for (int i = 0; i < header.length; i++) {
+            byte b = header[i];
+            for (int j = 0; j < 8; j++) {
+                int tmp = 1 << j;
+                result += ((tmp & b) == 0) ? 1 : 0;
+                if (++count == numSlots) {
+                    return result;
+                }
+            }
+        }
+        // should never reach here.
+        return result;
     }
 
     /**
      * Returns true if associated slot on this page is filled.
      */
     public boolean isSlotUsed(int i) {
-        // some code goes here
-        return false;
+        int loc = i / 8;
+        int offset = i % 8;
+        int tmp = 1 << offset;
+        return (header[loc] & tmp) != 0;
     }
 
     /**
@@ -292,13 +303,40 @@ public class HeapPage implements Page {
         // not necessary for lab1
     }
 
+    private class InnerIterator implements Iterator<Tuple> {
+        
+        private int cur;
+        
+        public InnerIterator() {
+            cur = 0;
+        }
+        
+        @Override
+        public boolean hasNext() {
+            return cur < numSlots;
+        }
+
+        @Override
+        public Tuple next() {
+            if (hasNext()) {
+                Tuple result = tuples[cur];
+                do {
+                    cur++;
+                } while (cur < numSlots && tuples[cur] == null);
+                return result;
+            } else {
+                throw new NoSuchElementException("no more tuples.");
+            }
+        }
+        
+    }
+    
     /**
      * @return an iterator over all tuples on this page (calling remove on this iterator throws an UnsupportedOperationException)
      * (note that this iterator shouldn't return tuples in empty slots!)
      */
     public Iterator<Tuple> iterator() {
-        // some code goes here
-        return null;
+        return new InnerIterator();
     }
 
 }

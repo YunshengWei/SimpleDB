@@ -13,7 +13,7 @@ public interface PageId {
     */
     public int[] serialize();
 
-    /** @return the unique tableid hashcode with this PageId */
+    /** @return the unique tableid with this PageId */
     public int getTableId();
 
     /**
