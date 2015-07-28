@@ -74,6 +74,7 @@ public class BufferPool {
         int newLoc = freeList.pop();
         int tableId = pid.getTableId();
         bufferedPages[newLoc] = Database.getCatalog().getDbFile(tableId).readPage(pid);
+        pageLookupTable.put(pid, newLoc);
         return bufferedPages[newLoc];
     }
 

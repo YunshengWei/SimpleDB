@@ -116,6 +116,8 @@ public class HeapFile implements DbFile {
 
     private class HeapFileIterator implements DbFileIterator {
         
+        private static final long serialVersionUID = 1L;
+        
         private int curPage;
         private Iterator<Tuple> curItr;
         private TransactionId tid;
@@ -136,9 +138,17 @@ public class HeapFile implements DbFile {
                 return;
             }
             curItr = ((HeapPage) bp.getPage(tid, new HeapPageId(getId(), curPage), Permissions.READ_ONLY)).iterator();
-            while (curPage < numPages() && !curItr.hasNext()) {
+            advance();
+        }
+        
+        private void advance() throws TransactionAbortedException, DbException {
+            while (!curItr.hasNext()) {
                 curPage++;
-                curItr = ((HeapPage) bp.getPage(tid, new HeapPageId(getId(), curPage), Permissions.READ_ONLY)).iterator();
+                if (curPage < numPages()) {
+                    curItr = ((HeapPage) bp.getPage(tid, new HeapPageId(getId(), curPage), Permissions.READ_ONLY)).iterator();
+                } else {
+                    break;
+                }
             }
         }
 
@@ -161,14 +171,7 @@ public class HeapFile implements DbFile {
                 throw new NoSuchElementException("No more tuples.");
             }
             Tuple result = curItr.next();
-            while (!curItr.hasNext()) {
-                curPage++;
-                if (curPage < numPages()) {
-                    curItr = ((HeapPage) bp.getPage(tid, new HeapPageId(getId(), curPage), Permissions.READ_ONLY)).iterator();
-                } else {
-                    break;
-                }
-            }
+            advance();
             return result;
         }
 

@@ -5,11 +5,7 @@ import java.util.Arrays;
 /** Unique identifier for HeapPage objects. */
 public class HeapPageId implements PageId {
 
-    private int tableId;
-    private int pageNo;
-    // Used for serialize and hashcode.
     int[] data;
-
     
     /**
      * Constructor. Create a page id structure for a specific page of a
@@ -19,16 +15,14 @@ public class HeapPageId implements PageId {
      * @param pgNo The page number in that table.
      */
     public HeapPageId(int tableId, int pgNo) {
-        this.tableId = tableId;
-        this.pageNo = pgNo;
         data = new int[2];
-        data[0] = getTableId();
-        data[1] = pageNumber();
+        data[0] = tableId;
+        data[1] = pgNo;
     }
 
     /** @return the table associated with this PageId */
     public int getTableId() {
-        return tableId;
+        return data[0];
     }
 
     /**
@@ -36,7 +30,7 @@ public class HeapPageId implements PageId {
      *   this PageId
      */
     public int pageNumber() {
-        return pageNo;
+        return data[1];
     }
 
     /**

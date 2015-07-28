@@ -308,7 +308,14 @@ public class HeapPage implements Page {
         private int cur;
         
         public InnerIterator() {
-            cur = 0;
+            cur = -1;
+            advance();
+        }
+        
+        private void advance() {
+            do {
+                cur++;
+            } while (cur < numSlots && tuples[cur] == null);
         }
         
         @Override
@@ -320,9 +327,7 @@ public class HeapPage implements Page {
         public Tuple next() {
             if (hasNext()) {
                 Tuple result = tuples[cur];
-                do {
-                    cur++;
-                } while (cur < numSlots && tuples[cur] == null);
+                advance();
                 return result;
             } else {
                 throw new NoSuchElementException("no more tuples.");
