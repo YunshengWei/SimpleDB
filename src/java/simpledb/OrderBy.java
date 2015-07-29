@@ -36,7 +36,7 @@ public class OrderBy extends Operator {
     
     public boolean isASC()
     {
-	return this.asc;
+        return this.asc;
     }
     
     public int getOrderByField()
@@ -46,7 +46,7 @@ public class OrderBy extends Operator {
     
     public String getOrderFieldName()
     {
-	return this.orderByFieldName;
+        return this.orderByFieldName;
     }
     
     public TupleDesc getTupleDesc() {
