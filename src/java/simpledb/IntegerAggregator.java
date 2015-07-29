@@ -131,8 +131,10 @@ public class IntegerAggregator implements Aggregator {
      */
     public DbIterator iterator() {
         ArrayList<Tuple> tuples = new ArrayList<Tuple>();
+        TupleDesc td;
         
         if (gbfield == Aggregator.NO_GROUPING) {
+            td = Utility.getTupleDesc(1);
             if (nogroup != null) {
                 int finalValue;
                 if (op == Op.AVG) {
@@ -143,10 +145,8 @@ public class IntegerAggregator implements Aggregator {
                 }
                 tuples.add(Utility.getTuple(new int[] {finalValue}, 1));
             }
-            TupleDesc td = Utility.getTupleDesc(1);
-            return new TupleIterator(td, tuples);
         } else {
-            TupleDesc td = new TupleDesc(new Type[] {gbfieldtype, Type.INT_TYPE});
+            td = new TupleDesc(new Type[] {gbfieldtype, Type.INT_TYPE});
             for (Map.Entry<Field, int[]> e : group.entrySet()) {
                 Tuple t = new Tuple(td);
                 t.setField(0, e.getKey());
@@ -160,8 +160,9 @@ public class IntegerAggregator implements Aggregator {
                 t.setField(1, new IntField(finalValue));
                 tuples.add(t);
             }
-            return new TupleIterator(td, tuples);
         }
+        
+        return new TupleIterator(td, tuples);
     }
 
 }
