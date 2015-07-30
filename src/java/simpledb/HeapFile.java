@@ -1,6 +1,7 @@
 package simpledb;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.util.ArrayList;
@@ -101,17 +102,52 @@ public class HeapFile implements DbFile {
     // see DbFile.java for javadocs
     public ArrayList<Page> insertTuple(TransactionId tid, Tuple t)
             throws DbException, IOException, TransactionAbortedException {
-        // some code goes here
-        return null;
-        // not necessary for proj1
+        
+        ArrayList<Page> pages = new ArrayList<Page>();
+        HeapPageId pid = null;
+        HeapPage page = null;
+        
+        for (int i = 0; i < numPages(); i++) {
+            pid = new HeapPageId(getId(), i);
+            // initially acquire a READ lock
+            page = (HeapPage) Database.getBufferPool().getPage(tid,
+                    pid, Permissions.READ_ONLY);
+            if (page.getNumEmptySlots() > 0) {
+                break;
+            }
+            Database.getBufferPool().releasePage(tid, pid);
+            pid = null;
+            page = null;
+        }
+        
+        if (pid == null) {
+            FileOutputStream fos = new FileOutputStream(file, true);
+            fos.write(HeapPage.createEmptyPageData());
+            fos.close();
+            pid = new HeapPageId(getId(), numPages() - 1);
+        }
+        
+        page = (HeapPage) Database.getBufferPool().getPage(tid,
+                pid, Permissions.READ_WRITE);
+        page.insertTuple(t);
+        pages.add(page);
+        page.markDirty(true, tid);
+        Database.getBufferPool().releasePage(tid, pid);
+        return pages;
     }
 
     // see DbFile.java for javadocs
     public Page deleteTuple(TransactionId tid, Tuple t) throws DbException,
             TransactionAbortedException {
-        // some code goes here
-        return null;
-        // not necessary for proj1
+        PageId pid = t.getRecordId().getPageId();
+        if (pid.getTableId() != getId() || pid.pageNumber() >= numPages()) {
+            throw new DbException("The tuple is not a member of the file");
+        }
+        HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_WRITE);
+        page.deleteTuple(t);
+        page.markDirty(true, tid);
+        Database.getBufferPool().releasePage(tid, pid);
+        return page;
     }
 
     private class HeapFileIterator implements DbFileIterator {
