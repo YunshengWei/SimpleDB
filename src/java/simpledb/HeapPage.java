@@ -20,7 +20,6 @@ public class HeapPage implements Page {
     int numSlots;
     byte[] oldData;
     
-    private boolean dirty;
     private TransactionId lastDirtyTid;
     
     /**
@@ -280,10 +279,8 @@ public class HeapPage implements Page {
      */
     public void markDirty(boolean dirty, TransactionId tid) {
         if (dirty) {
-            this.dirty = true;
             lastDirtyTid = tid;
         } else {
-            this.dirty = false;
             lastDirtyTid = null;
         }
     }

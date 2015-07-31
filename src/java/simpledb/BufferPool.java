@@ -3,6 +3,8 @@ package simpledb;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.Random;
+
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -30,6 +32,8 @@ public class BufferPool {
     private HashMap<PageId, Integer> pageLookupTable;
     /** Records free pages in buffer pool. */
     private LinkedList<Integer> freeList;
+    /** Used for random eviction policy. */
+    private Random rnd;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -44,6 +48,7 @@ public class BufferPool {
             freeList.add(i);
         }
         pageLookupTable = new HashMap<PageId, Integer>();
+        rnd = new Random();
     }
 
     /**
@@ -68,8 +73,8 @@ public class BufferPool {
         if (loc != null) {
             return bufferedPages[loc];
         }
-        if (pageLookupTable.size() == numPages) {
-            throw new DbException(null);
+        if (freeList.isEmpty()) {
+            evictPage();
         }
         int newLoc = freeList.pop();
         int tableId = pid.getTableId();
@@ -166,9 +171,11 @@ public class BufferPool {
      *     break simpledb if running in NO STEAL mode.
      */
     public synchronized void flushAllPages() throws IOException {
-        // some code goes here
-        // not necessary for proj1
-
+        for (Page page : bufferedPages) {
+            if (page != null) {
+                flushPage(page.getId());
+            }
+        }
     }
 
     /** Remove the specific page id from the buffer pool.
@@ -178,7 +185,7 @@ public class BufferPool {
     */
     public synchronized void discardPage(PageId pid) {
         // some code goes here
-	// not necessary for proj1
+        // not necessary for proj1
     }
 
     /**
@@ -186,8 +193,15 @@ public class BufferPool {
      * @param pid an ID indicating the page to flush
      */
     private synchronized void flushPage(PageId pid) throws IOException {
-        // some code goes here
-        // not necessary for proj1
+        Integer i = pageLookupTable.get(pid);
+        if (i == null) {
+            return;
+        }
+        Page page = bufferedPages[i];
+        if (page.isDirty() != null) {
+            Database.getCatalog().getDbFile(pid.getTableId()).writePage(page);
+            page.markDirty(false, null);
+        }
     }
 
     /** Write all pages of the specified transaction to disk.
@@ -202,8 +216,16 @@ public class BufferPool {
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
     private synchronized void evictPage() throws DbException {
-        // some code goes here
-        // not necessary for proj1
+        // For simplicity, only implement random eviction policy;
+        int evictLoc = rnd.nextInt(numPages);
+        try {
+            flushPage(bufferedPages[evictLoc].getId());
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.exit(-1);
+        }
+        bufferedPages[evictLoc] = null; 
+        freeList.add(evictLoc);        
     }
 
 }
