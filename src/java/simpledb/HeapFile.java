@@ -20,6 +20,8 @@ import java.util.NoSuchElementException;
  */
 public class HeapFile implements DbFile {
 
+    private static final long serialVersionUID = 1L;
+    
     private TupleDesc td;
     private File file;
     
@@ -88,7 +90,7 @@ public class HeapFile implements DbFile {
 
     // see DbFile.java for javadocs
     public void writePage(Page page) throws IOException {
-        RandomAccessFile raf = new RandomAccessFile(file, "w");
+        RandomAccessFile raf = new RandomAccessFile(file, "rw");
         
         PageId pid = page.getId();
         long pos = pid.pageNumber() * (long) BufferPool.PAGE_SIZE;
@@ -160,16 +162,13 @@ public class HeapFile implements DbFile {
         
         private static final long serialVersionUID = 1L;
         
-        private int curPage;
-        private Iterator<Tuple> curItr;
+        private int curPage = 0;
+        private Iterator<Tuple> curItr = null;
         private TransactionId tid;
-        private BufferPool bp;
-        private boolean open;
+        private boolean open = false;;
         
         public HeapFileIterator(TransactionId tid) {
             this.tid = tid;
-            open = false;
-            bp = Database.getBufferPool();
         }
         
         @Override
@@ -179,15 +178,19 @@ public class HeapFile implements DbFile {
             if (curPage >= numPages()) {
                 return;
             }
-            curItr = ((HeapPage) bp.getPage(tid, new HeapPageId(getId(), curPage), Permissions.READ_ONLY)).iterator();
+            curItr = ((HeapPage) Database.getBufferPool().getPage(tid,
+                    new HeapPageId(getId(), curPage), Permissions.READ_ONLY))
+                    .iterator();
             advance();
         }
-        
+
         private void advance() throws TransactionAbortedException, DbException {
             while (!curItr.hasNext()) {
                 curPage++;
                 if (curPage < numPages()) {
-                    curItr = ((HeapPage) bp.getPage(tid, new HeapPageId(getId(), curPage), Permissions.READ_ONLY)).iterator();
+                    curItr = ((HeapPage) Database.getBufferPool().getPage(tid,
+                            new HeapPageId(getId(), curPage),
+                            Permissions.READ_ONLY)).iterator();
                 } else {
                     break;
                 }
@@ -220,16 +223,19 @@ public class HeapFile implements DbFile {
         @Override
         public void rewind() throws DbException, TransactionAbortedException {
             if (!open) {
-                throw new DbException("iterator not open.");
+                throw new DbException("iterator not open yet.");
             }
+            close();
             open();          
         }
 
         @Override
         public void close() {
+            curItr = null;
+            curPage = 0;
             open = false;
         }
-        
+
     }
     
     // see DbFile.java for javadocs

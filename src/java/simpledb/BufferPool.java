@@ -184,8 +184,18 @@ public class BufferPool {
         cache.
     */
     public synchronized void discardPage(PageId pid) {
-        // some code goes here
-        // not necessary for proj1
+        try {
+            flushPage(pid);
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.exit(-1);
+        }
+        Integer loc = pageLookupTable.get(pid);
+        if (loc != null) {
+            bufferedPages[loc] = null;
+            pageLookupTable.remove(pid);
+            freeList.add(loc);
+        }    
     }
 
     /**
@@ -218,14 +228,16 @@ public class BufferPool {
     private synchronized void evictPage() throws DbException {
         // For simplicity, only implement random eviction policy;
         int evictLoc = rnd.nextInt(numPages);
+        PageId pid = bufferedPages[evictLoc].getId();
         try {
-            flushPage(bufferedPages[evictLoc].getId());
+            flushPage(pid);
         } catch (IOException e) {
             e.printStackTrace();
             System.exit(-1);
         }
-        bufferedPages[evictLoc] = null; 
-        freeList.add(evictLoc);        
+        bufferedPages[evictLoc] = null;
+        pageLookupTable.remove(pid);
+        freeList.add(evictLoc);
     }
 
 }

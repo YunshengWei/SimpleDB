@@ -161,6 +161,7 @@ public class Catalog {
     public void loadSchema(String catalogFile) {
         String line = "";
         String baseFolder = new File(catalogFile).getParent();
+        baseFolder = baseFolder == null ? "" : baseFolder;
         try {
             BufferedReader br = new BufferedReader(new FileReader(new File(
                     catalogFile)));

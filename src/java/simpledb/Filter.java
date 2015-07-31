@@ -12,6 +12,8 @@ public class Filter extends Operator {
     private Predicate pred;
     private DbIterator child;
     private TupleDesc td;
+    private ArrayList<Tuple> tupList;
+    private Iterator<Tuple> itr;
 
     /**
      * Constructor accepts a predicate to apply and a child operator to read
@@ -26,6 +28,8 @@ public class Filter extends Operator {
         this.pred = p;
         this.child = child;
         this.td = child.getTupleDesc();
+        this.tupList = new ArrayList<Tuple>();
+        this.itr = null;
     }
 
     public Predicate getPredicate() {
@@ -39,16 +43,25 @@ public class Filter extends Operator {
     public void open() throws DbException, NoSuchElementException,
             TransactionAbortedException {
         child.open();
+        // preload all valid tuples in a list
+        // can be efficient for rewind()
+        while (child.hasNext()) {
+            Tuple t = child.next();
+            if (pred.filter(t)) {
+                tupList.add(t);
+            }
+        }
+        itr = tupList.iterator();
         super.open();
     }
 
     public void close() {
         super.close();
-        child.close();
+        itr = null;
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
-        child.rewind();
+        itr = tupList.iterator();
     }
 
     /**
@@ -62,13 +75,11 @@ public class Filter extends Operator {
      */
     protected Tuple fetchNext() throws NoSuchElementException,
             TransactionAbortedException, DbException {
-        while (child.hasNext()) {
-            Tuple t = child.next();
-            if (pred.filter(t)) {
-                return t;
-            }
+        if (itr != null && itr.hasNext()) {
+            return itr.next();
+        } else {
+            return null;
         }
-        return null;
     }
 
     @Override

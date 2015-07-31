@@ -12,7 +12,10 @@ public class Join extends Operator {
     private JoinPredicate pred;
     private DbIterator child1, child2;
     private TupleDesc td, td1, td2;
+    private ArrayList<Tuple> tupList;
+    private Iterator<Tuple> itr;
     private Tuple t1;
+    
     /**
      * Constructor. Accepts to children to join and the predicate to join them
      * on
@@ -28,9 +31,11 @@ public class Join extends Operator {
         this.pred = p;
         this.child1 = child1;
         this.child2 = child2;
-        td1 = child1.getTupleDesc();
-        td2 = child2.getTupleDesc();
-        td = TupleDesc.merge(td1, td2);
+        this.td1 = child1.getTupleDesc();
+        this.td2 = child2.getTupleDesc();
+        this.td = TupleDesc.merge(td1, td2);
+        this.tupList = new ArrayList<Tuple>();
+        this.itr = null;
     }
 
     public JoinPredicate getJoinPredicate() {
@@ -67,21 +72,39 @@ public class Join extends Operator {
             TransactionAbortedException {
         child1.open();
         child2.open();
-        t1 = null;
+        //if (pred.getOperator() == Predicate.Op.EQUALS) {
+        //    
+        //} else {
+            for ( ;child1.hasNext(); ) {
+                Tuple t1 = child1.next();
+                for ( ;child2.hasNext(); ) {
+                    Tuple t2 = child2.next();
+                    if (pred.filter(t1, t2)) {
+                        Tuple newTuple = new Tuple(td);
+                        for (int i = 0; i < td.numFields(); i++) {
+                            if (i < td1.numFields()) {
+                                newTuple.setField(i, t1.getField(i));
+                            } else {
+                                newTuple.setField(i, t2.getField(i - td1.numFields()));
+                            }
+                        }
+                        tupList.add(newTuple);
+                    }
+                }
+                child2.rewind();
+            }
+        //}
+        itr = tupList.iterator();
         super.open();
     }
 
     public void close() {
         super.close();
-        t1 = null;
-        child1.close();
-        child2.close();
+        itr = null;
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
-        child1.rewind();
-        child2.rewind();
-        t1 = null;
+        itr = tupList.iterator();
     }
 
     /**
@@ -103,7 +126,12 @@ public class Join extends Operator {
      * @see JoinPredicate#filter
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
-        if (t1 == null) {
+        if (itr != null && itr.hasNext()) {
+            return itr.next();
+        } else {
+            return null;
+        }
+        /*if (t1 == null) {
             if (child1.hasNext()) {
                 t1 = child1.next();
             }
@@ -133,7 +161,7 @@ public class Join extends Operator {
             }
         }
         
-        return null;
+        return null;*/
     }
 
     @Override

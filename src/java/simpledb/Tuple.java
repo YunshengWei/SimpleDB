@@ -84,7 +84,7 @@ public class Tuple implements Serializable {
      * Returns the contents of this Tuple as a string. Note that to pass the
      * system tests, the format needs to be as follows:
      * 
-     * column1\tcolumn2\tcolumn3\t...\tcolumnN\n
+     * column1\tcolumn2\tcolumn3\t...\tcolumnN
      * 
      * where \t is any whitespace, except newline, and \n is a newline
      */
@@ -94,7 +94,7 @@ public class Tuple implements Serializable {
             sb.append(f);
             sb.append("\t");
         }
-        sb.replace(sb.length() - 1, sb.length() - 1, "\n");
+        sb.replace(sb.length() - 1, sb.length() - 1, "");
         return sb.toString();
     }
     
