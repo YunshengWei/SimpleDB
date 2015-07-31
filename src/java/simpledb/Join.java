@@ -14,7 +14,6 @@ public class Join extends Operator {
     private TupleDesc td, td1, td2;
     private ArrayList<Tuple> tupList;
     private Iterator<Tuple> itr;
-    private Tuple t1;
     
     /**
      * Constructor. Accepts to children to join and the predicate to join them
@@ -72,9 +71,78 @@ public class Join extends Operator {
             TransactionAbortedException {
         child1.open();
         child2.open();
-        //if (pred.getOperator() == Predicate.Op.EQUALS) {
-        //    
-        //} else {
+        
+        // Sort-Merge Join for equality join
+        if (pred.getOperator() == Predicate.Op.EQUALS) {
+            ArrayList<Tuple> child1Tups = new ArrayList<Tuple>();
+            ArrayList<Tuple> child2Tups = new ArrayList<Tuple>();
+            while (child1.hasNext()) {
+                child1Tups.add(child1.next());
+            }
+            while (child2.hasNext()) {
+                child2Tups.add(child2.next());
+            }
+            Collections.sort(child1Tups, new Comparator<Tuple>() {
+                @Override
+                public int compare(Tuple t1, Tuple t2) {
+                    if (t1.getField(pred.getField1()).compare(
+                            Predicate.Op.LESS_THAN,
+                            t2.getField(pred.getField1()))) {
+                        return -1;
+                    } else if (t1.getField(pred.getField1()).compare(
+                            Predicate.Op.EQUALS, t2.getField(pred.getField1()))) {
+                        return 0;
+                    } else {
+                        return 1;
+                    }
+                }                
+            });
+            Collections.sort(child2Tups, new Comparator<Tuple>() {
+                @Override
+                public int compare(Tuple t1, Tuple t2) {
+                    if (t1.getField(pred.getField2()).compare(
+                            Predicate.Op.LESS_THAN,
+                            t2.getField(pred.getField2()))) {
+                        return -1;
+                    } else if (t1.getField(pred.getField2()).compare(
+                            Predicate.Op.EQUALS, t2.getField(pred.getField2()))) {
+                        return 0;
+                    } else {
+                        return 1;
+                    }
+                }
+            });
+            
+            int i = 0;
+            int j = 0;
+            while (i < child1Tups.size() && j < child2Tups.size()) {
+                Field f1 = child1Tups.get(i).getField(pred.getField1());
+                Field f2 = child2Tups.get(j).getField(pred.getField2());
+                if (f1.compare(Predicate.Op.LESS_THAN, f2)) {
+                    i++;
+                } else if (f1.compare(Predicate.Op.GREATER_THAN, f2)) {
+                    j++;
+                } else {
+                    int backupJ = j;
+                    while (j < child2Tups.size()
+                            && child2Tups.get(j).getField(pred.getField2())
+                                    .compare(Predicate.Op.EQUALS, f2)) {
+                        Tuple newTuple = new Tuple(td);
+                        for (int k = 0; k < td.numFields(); k++) {
+                            if (k < td1.numFields()) {
+                                newTuple.setField(k, child1Tups.get(i).getField(k));
+                            } else {
+                                newTuple.setField(k, child2Tups.get(j).getField(k - td1.numFields()));
+                            }
+                        }
+                        tupList.add(newTuple);
+                        j++;
+                    }
+                    i++;
+                    j = backupJ;
+                }
+            }
+        } else {
             for ( ;child1.hasNext(); ) {
                 Tuple t1 = child1.next();
                 for ( ;child2.hasNext(); ) {
@@ -93,7 +161,7 @@ public class Join extends Operator {
                 }
                 child2.rewind();
             }
-        //}
+        }
         itr = tupList.iterator();
         super.open();
     }
