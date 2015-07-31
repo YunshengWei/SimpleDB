@@ -161,7 +161,7 @@ public class Catalog {
     public void loadSchema(String catalogFile) {
         String line = "";
         String baseFolder = new File(catalogFile).getParent();
-        baseFolder = baseFolder == null ? "" : baseFolder;
+        baseFolder = baseFolder == null ? "" : baseFolder + File.separator;
         try {
             BufferedReader br = new BufferedReader(new FileReader(new File(
                     catalogFile)));
@@ -200,7 +200,7 @@ public class Catalog {
                 Type[] typeAr = types.toArray(new Type[0]);
                 String[] namesAr = names.toArray(new String[0]);
                 TupleDesc t = new TupleDesc(typeAr, namesAr);
-                HeapFile tabHf = new HeapFile(new File(baseFolder + "/" + name
+                HeapFile tabHf = new HeapFile(new File(baseFolder + name
                         + ".dat"), t);
                 addTable(tabHf, name, primaryKey);
                 System.out.println("Added table : " + name + " with schema "
