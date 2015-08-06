@@ -4,6 +4,11 @@ package simpledb;
  */
 public class IntHistogram {
 
+    private int min, max;
+    private int[] histgrams;
+    private int bucketWidth;
+    private int totalTups;
+    
     /**
      * Create a new IntHistogram.
      * 
@@ -21,15 +26,22 @@ public class IntHistogram {
      * @param max The maximum integer value that will ever be passed to this class for histogramming
      */
     public IntHistogram(int buckets, int min, int max) {
-    	// some code goes here
+    	this.min = min;
+    	this.max = max;
+    	this.bucketWidth = (int) Math.ceil((max - min + 1.0) / buckets);
+    	histgrams = new int[buckets];
     }
 
     /**
      * Add a value to the set of values that you are keeping a histogram of.
-     * @param v Value to add to the histogram
+     * 
+     * @param v
+     *            Value to add to the histogram. Must ensure min <= v <= max.
      */
     public void addValue(int v) {
-    	// some code goes here
+        int bucketNo = (v - min) / bucketWidth;
+    	histgrams[bucketNo]++;
+    	totalTups += 1;
     }
 
     /**
@@ -43,9 +55,61 @@ public class IntHistogram {
      * @return Predicted selectivity of this particular operator and value
      */
     public double estimateSelectivity(Predicate.Op op, int v) {
-
-    	// some code goes here
-        return -1.0;
+        double selectivity;
+        double eqCount;
+        double greaterCount;
+        
+        
+        if (v < min) {
+            eqCount = 0;
+            greaterCount = totalTups;
+        } else if (v > max) {
+            eqCount = 0;
+            greaterCount = 0;
+        } else {
+            int bucketNo = (v - min) / bucketWidth;
+            // the last bucket may have smaller width
+            int width;
+            if (bucketNo == histgrams.length) {
+                width = max - min - (histgrams.length - 1) * bucketWidth + 1;
+            } else {
+                width = bucketWidth;
+            }
+            eqCount = ((double) histgrams[bucketNo]) / width
+                    * histgrams[bucketNo];
+            greaterCount = 0;
+            for (int i = bucketNo + 1; i < histgrams.length; i++) {
+                greaterCount += histgrams[i];
+            }
+            greaterCount += eqCount
+                    * (width - (v - (min + bucketNo * bucketWidth - 1)));
+        }
+        
+        switch (op) {
+        case EQUALS:
+            selectivity = eqCount / totalTups;
+            break;
+        case GREATER_THAN:
+            selectivity = greaterCount / totalTups;
+            break;
+        case GREATER_THAN_OR_EQ:
+            selectivity = (greaterCount + eqCount)/ totalTups;
+            break;
+        case LESS_THAN:
+            selectivity = 1 - (greaterCount + eqCount)/ totalTups;
+            break;
+        case LESS_THAN_OR_EQ:
+            selectivity = 1 - greaterCount / totalTups;
+            break;
+        case NOT_EQUALS:
+            selectivity = 1 - eqCount / totalTups;
+            break;
+        default:
+            // LIKE
+            selectivity = 1.0;
+        }
+        
+        return selectivity;
     }
     
     /**
@@ -66,8 +130,12 @@ public class IntHistogram {
      * @return A string describing this histogram, for debugging purposes
      */
     public String toString() {
-
-        // some code goes here
-        return null;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < histgrams.length; i++) {
+            int left = Math.max(min, min + bucketWidth * i);
+            int right = Math.min(max, min + bucketWidth * (i + 1) - 1);
+            sb.append(String.format("[ %s, %s ] : %s%n", left, right, histgrams[i]));
+        }
+        return sb.toString();
     }
 }
