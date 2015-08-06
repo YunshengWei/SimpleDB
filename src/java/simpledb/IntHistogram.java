@@ -7,7 +7,7 @@ public class IntHistogram {
     private int min, max;
     private int[] histgrams;
     private int bucketWidth;
-    private int totalTups;
+    private int totalTups = 0;
     
     /**
      * Create a new IntHistogram.
@@ -55,6 +55,10 @@ public class IntHistogram {
      * @return Predicted selectivity of this particular operator and value
      */
     public double estimateSelectivity(Predicate.Op op, int v) {
+        if (totalTups == 0) {
+            return 1.0;
+        }
+        
         double selectivity;
         double eqCount;
         double greaterCount;
@@ -75,8 +79,7 @@ public class IntHistogram {
             } else {
                 width = bucketWidth;
             }
-            eqCount = ((double) histgrams[bucketNo]) / width
-                    * histgrams[bucketNo];
+            eqCount = ((double) histgrams[bucketNo]) / width;
             greaterCount = 0;
             for (int i = bucketNo + 1; i < histgrams.length; i++) {
                 greaterCount += histgrams[i];
