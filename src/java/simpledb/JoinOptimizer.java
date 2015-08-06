@@ -111,7 +111,7 @@ public class JoinOptimizer {
             // HINT: You may need to use the variable "j" if you implemented
             // a join algorithm that's more complicated than a basic nested-loops
             // join.
-            return -1.0;
+            return cost1 + card1 * cost2 + card1 * card2;
         }
     }
 
@@ -154,9 +154,21 @@ public class JoinOptimizer {
             String field2PureName, int card1, int card2, boolean t1pkey,
             boolean t2pkey, Map<String, TableStats> stats,
             Map<String, Integer> tableAliasToId) {
-        int card = 1;
-        // some code goes here
-        return card <= 0 ? 1 : card;
+        if (joinOp == Predicate.Op.EQUALS) {
+            int table1id = tableAliasToId.get(table1Alias);
+            int table2id = tableAliasToId.get(table2Alias);
+            if (Database.getCatalog().getPrimaryKey(table1id).equals(field1PureName)) {
+                return card2;
+            } else if (Database.getCatalog().getPrimaryKey(table2id).equals(field2PureName)) {
+                return card1;
+            } else {
+                // Use the size of the larger of the two tables as a simple heuristic
+                return Math.max(card1, card2);
+            }
+        } else {
+            // Use 30% of cross product as a simple heuristic
+            return card1 * card2 * 3 / 10;
+        }
     }
 
     /**
@@ -216,13 +228,35 @@ public class JoinOptimizer {
             HashMap<String, TableStats> stats,
             HashMap<String, Double> filterSelectivities, boolean explain)
             throws ParsingException {
-
-        // See the project writeup for some hints as to how this function
-        // should work.
-
-        // some code goes here
-        //Replace the following
-        return joins;
+        try {
+            PlanCache pc = new PlanCache();
+            for (int i = 1; i <= joins.size(); i++) {
+                for (Set<LogicalJoinNode> joinSet :  enumerateSubsets(joins, i)) {
+                    CostCard bestcc = new CostCard();
+                    bestcc.cost = Double.POSITIVE_INFINITY;
+                    bestcc.card = Integer.MAX_VALUE;
+                    for (LogicalJoinNode joinToRemove : joinSet) {
+                        CostCard cc = computeCostAndCardOfSubplan(stats, filterSelectivities,
+                                joinToRemove, joinSet, bestcc.cost, pc);
+                        if (cc != null) {
+                            bestcc = cc;
+                        }
+                    }
+                    pc.addPlan(joinSet, bestcc.cost, bestcc.card, bestcc.plan);
+                }
+            }
+            
+            Vector<LogicalJoinNode> bestOrder = 
+                    pc.getOrder(new HashSet<LogicalJoinNode>(joins));
+            
+            if (explain) {
+                printJoins(bestOrder, pc, stats, filterSelectivities);
+            }
+            
+            return bestOrder;
+        } catch (Exception e) {
+            throw new ParsingException("Some internal error occurs.");
+        }
     }
 
     // ===================== Private Methods =================================
