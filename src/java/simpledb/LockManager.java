@@ -4,9 +4,9 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+//import java.util.concurrent.locks.Lock;
+//import java.util.concurrent.locks.ReadWriteLock;
+//import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * LockManager is responsible for maintaining state about transactions and
@@ -17,11 +17,11 @@ public class LockManager {
     /** Maps PageId to its associated ReadWriteLock */
     private ConcurrentMap<PageId, ReadWriteLock> lockMap;
     /** Maintains information about which locks a transaction holds */
-    private ConcurrentMap<TransactionId, Set<Lock>> transLocksMap;
+    private ConcurrentMap<TransactionId, Set<ReadWriteLock>> transLocksMap;
 
     public LockManager() {
         lockMap = new ConcurrentHashMap<PageId, ReadWriteLock>();
-        transLocksMap = new ConcurrentHashMap<TransactionId, Set<Lock>>();
+        transLocksMap = new ConcurrentHashMap<TransactionId, Set<ReadWriteLock>>();
     }
     
     /**
@@ -32,7 +32,7 @@ public class LockManager {
     public ReadWriteLock getReadWriteLock(PageId pid) {
         ReadWriteLock rwl = lockMap.get(pid);
         if (rwl == null) {
-            lockMap.putIfAbsent(pid, new ReentrantReadWriteLock());
+            lockMap.putIfAbsent(pid, new ReadWriteLock());
             rwl = lockMap.get(pid);
         }
         return rwl;
@@ -49,11 +49,16 @@ public class LockManager {
      */
     public void acquireReadLock(TransactionId tid, PageId pid) {
         ReadWriteLock rwl = getReadWriteLock(pid);
-        Lock rl = rwl.readLock();
-        rl.lock();
-        Set<Lock> locks = transLocksMap
-                .getOrDefault(tid, new HashSet<Lock>());
-        locks.add(rl);
+        try {
+            rwl.lockRead(tid);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+            // Terminate current thread
+            throw new RuntimeException(String.format("Thread %s interrupted", Thread.currentThread()));
+        }
+        Set<ReadWriteLock> locks = transLocksMap
+                .getOrDefault(tid, new HashSet<ReadWriteLock>());
+        locks.add(rwl);
         transLocksMap.put(tid, locks);
     }
 
@@ -69,16 +74,16 @@ public class LockManager {
     public void acquireWriteLock(TransactionId tid, PageId pid) {
         ReadWriteLock rwl = getReadWriteLock(pid);
         // Must release read lock before acquiring write lock
-        Set<Lock> locks = transLocksMap
-                .getOrDefault(tid, new HashSet<Lock>());
-        if (locks.contains(rwl.readLock())) {
-            locks.remove(rwl.readLock());
-            rwl.readLock().unlock();
-            transLocksMap.put(tid, locks);
+        Set<ReadWriteLock> locks = transLocksMap
+                .getOrDefault(tid, new HashSet<ReadWriteLock>());
+        try {
+            rwl.lockWrite(tid);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+            // Terminate current thread
+            throw new RuntimeException(String.format("Thread %s interrupted", Thread.currentThread()));
         }
-        Lock wl = rwl.writeLock();
-        wl.lock();
-        locks.add(wl);
+        locks.add(rwl);
         transLocksMap.put(tid, locks);
     }
 
@@ -91,26 +96,26 @@ public class LockManager {
      *            the ID of the page to unlock
      */
     public void releasePage(TransactionId tid, PageId pid) {
-        Set<Lock> locks = transLocksMap.getOrDefault(tid, new HashSet<Lock>());
+        Set<ReadWriteLock> locks = transLocksMap.getOrDefault(tid, new HashSet<ReadWriteLock>());
         ReadWriteLock rwl = getReadWriteLock(pid);
-        if (locks.contains(rwl.readLock())) {
-            locks.remove(rwl.readLock());
-            rwl.readLock().unlock();
-        }
-        if (locks.contains(rwl.writeLock())) {
-            locks.remove(rwl.writeLock());
-            rwl.writeLock().unlock();
+        if (locks.contains(rwl)) {
+            locks.remove(rwl);
+            if (rwl.isReader(tid)) {
+                rwl.unlockRead(tid);
+            }
+            if (rwl.isWriter(tid)) {
+                rwl.unlockWrite(tid);
+            }
+            transLocksMap.put(tid, locks);
         }
     }
     
     /** Return true if the specified transaction has a lock on the specified page */
     public boolean holdsLock(TransactionId tid, PageId pid) {
         ReadWriteLock rwl = getReadWriteLock(pid);
-        Lock readLock = rwl.readLock();
-        Lock writeLock = rwl.writeLock();
-        Set<Lock> locks = transLocksMap.getOrDefault(tid, new HashSet<Lock>());
+        Set<ReadWriteLock> locks = transLocksMap.getOrDefault(tid, new HashSet<ReadWriteLock>());
         
-        if (locks.contains(readLock) || locks.contains(writeLock)) {
+        if (locks.contains(rwl)) {
             return true;
         } else {
             return false;
