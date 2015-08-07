@@ -34,6 +34,8 @@ public class BufferPool {
     private LinkedList<Integer> freeList;
     /** Used for random eviction policy. */
     private Random rnd;
+    /** Manages transactions and locks. */
+    private LockManager lockManager;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -49,6 +51,7 @@ public class BufferPool {
         }
         pageLookupTable = new HashMap<PageId, Integer>();
         rnd = new Random();
+        lockManager = new LockManager();
     }
 
     /**
@@ -68,7 +71,16 @@ public class BufferPool {
      */
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
-        // TODO: add code for handling locks
+        if (perm == Permissions.READ_ONLY) {
+            lockManager.acquireReadLock(tid, pid);
+        } else if (perm == Permissions.READ_WRITE) {
+            lockManager.acquireWriteLock(tid, pid);
+        } else {
+            // Should never reach here
+            assert false : "should never reach here.";
+            System.exit(-1);
+        }
+        
         Integer loc = pageLookupTable.get(pid);
         if (loc != null) {
             return bufferedPages[loc];
@@ -93,8 +105,7 @@ public class BufferPool {
      * @param pid the ID of the page to unlock
      */
     public void releasePage(TransactionId tid, PageId pid) {
-        // some code goes here
-        // not necessary for proj1
+        lockManager.releasePage(tid, pid);
     }
 
     /**
@@ -108,10 +119,8 @@ public class BufferPool {
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
-    public boolean holdsLock(TransactionId tid, PageId p) {
-        // some code goes here
-        // not necessary for proj1
-        return false;
+    public boolean holdsLock(TransactionId tid, PageId pid) {
+        return lockManager.holdsLock(tid, pid);
     }
 
     /**
