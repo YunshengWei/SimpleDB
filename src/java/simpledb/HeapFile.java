@@ -24,6 +24,11 @@ public class HeapFile implements DbFile {
     
     private TupleDesc td;
     private File file;
+    // In order to support NO-STEAL policy, we need a variable to record
+    // current number of pages of the HeapFile.
+    // When a new page is added to the HeapFile, the actual number of pages
+    // on the disk and the true number of pages are different.
+    private int numPages;
     
     /**
      * Constructs a heap file backed by the specified file.
@@ -35,6 +40,7 @@ public class HeapFile implements DbFile {
     public HeapFile(File f, TupleDesc td) {
         this.file = f;
         this.td = td;
+        this.numPages = (int) (file.length() / BufferPool.PAGE_SIZE);
     }
 
     /**
@@ -94,17 +100,26 @@ public class HeapFile implements DbFile {
         
         PageId pid = page.getId();
         long pos = pid.pageNumber() * (long) BufferPool.PAGE_SIZE;
-        // for simplicity, DOES NOT check page validity here
+        // if pos is beyond the end of file => new pages need to be appended to the file
         raf.seek(pos);
         raf.write(page.getPageData());
         raf.close();
     }
 
     /**
-     * Returns the number of pages in this HeapFile.
+     * All access to numPages variable should use this synchronized method.
+     * @return the number of pages in this HeapFile.
      */
-    public int numPages() {
-        return (int) (file.length() / BufferPool.PAGE_SIZE);
+    public synchronized int numPages() {
+        return numPages;
+    }
+    
+    /**
+     * Increment numPages by 1.
+     * All modification to numPages variable should use this synchronized method.
+     */
+    private synchronized void incrementNumPages() {
+        numPages++;
     }
 
     // see DbFile.java for javadocs
@@ -112,49 +127,55 @@ public class HeapFile implements DbFile {
             throws DbException, IOException, TransactionAbortedException {
         
         ArrayList<Page> pages = new ArrayList<Page>();
-        HeapPageId pid = null;
-        HeapPage page = null;
         
-        for (int i = 0; i < numPages(); i++) {
-            pid = new HeapPageId(getId(), i);
-            // initially acquire a READ lock
-            page = (HeapPage) Database.getBufferPool().getPage(tid,
+        for (int i = 0; ; i++) {
+            HeapPageId pid = new HeapPageId(getId(), i);
+            // acquire READ_ONLY lock first
+            HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid,
                     pid, Permissions.READ_ONLY);
-            if (page.getNumEmptySlots() > 0) {
-                break;
+            if (page.getNumEmptySlots() == 0) {
+                Database.getBufferPool().releasePage(tid, pid);
+                continue;
             }
-            Database.getBufferPool().releasePage(tid, pid);
-            pid = null;
-            page = null;
+            
+            synchronized (Database.getBufferPool()) {
+                page = (HeapPage) Database.getBufferPool().getPage(tid,
+                        pid, Permissions.READ_WRITE);
+                // Must first inform buffer pool that the page will be modified to avoid being evicted
+                Database.getBufferPool().markDirty(pid);
+            }
+            
+            page.markDirty(true, tid);
+            page.insertTuple(t);
+            pages.add(page);
+            
+            if (i == numPages()) {
+                incrementNumPages();
+            }
+            
+            return pages;
         }
-        
-        if (pid == null) {
-            FileOutputStream fos = new FileOutputStream(file, true);
-            fos.write(HeapPage.createEmptyPageData());
-            fos.close();
-            pid = new HeapPageId(getId(), numPages() - 1);
-        }
-        
-        page = (HeapPage) Database.getBufferPool().getPage(tid,
-                pid, Permissions.READ_WRITE);
-        page.insertTuple(t);
-        pages.add(page);
-        page.markDirty(true, tid);
-        Database.getBufferPool().releasePage(tid, pid);
-        return pages;
     }
 
     // see DbFile.java for javadocs
     public Page deleteTuple(TransactionId tid, Tuple t) throws DbException,
             TransactionAbortedException {
+        
         PageId pid = t.getRecordId().getPageId();
         if (pid.getTableId() != getId() || pid.pageNumber() >= numPages()) {
             throw new DbException("The tuple is not a member of the file");
         }
-        HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_WRITE);
-        page.deleteTuple(t);
+        
+        HeapPage page;
+        // ensure that between getPage() and markDirty(), 
+        // the page will not be evicted
+        synchronized (Database.getBufferPool()) {
+            page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_WRITE);
+            // Must first inform buffer pool that the page will be modified to avoid being evicted
+            Database.getBufferPool().markDirty(pid);Database.getBufferPool().markDirty(pid);
+        }
         page.markDirty(true, tid);
-        Database.getBufferPool().releasePage(tid, pid);
+        page.deleteTuple(t);
         return page;
     }
 

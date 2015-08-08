@@ -9,12 +9,25 @@ import java.util.Map;
  */
 public class ReadWriteLock {
 
+    /** Indicate which PageId this ReadWriteLock is associated with */
+    private PageId pid;
+    
     private Map<TransactionId, Integer> readingTids = new HashMap<TransactionId, Integer>();
-
     private int writeAccesses = 0;
     private int writeRequests = 0;
     private TransactionId writingTid = null;
 
+    public ReadWriteLock(PageId pid) {
+        this.pid = pid;
+    }
+    
+    /**
+     * @return the PageId this lock is associated with
+     */
+    public PageId getPageId() {
+        return pid;
+    }
+    
     public synchronized void lockRead(TransactionId tid)
             throws InterruptedException {
         while (!canGrantReadAccess(tid)) {

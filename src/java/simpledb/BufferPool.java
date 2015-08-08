@@ -2,8 +2,10 @@ package simpledb;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Random;
+import java.util.Set;
 
 
 /**
@@ -36,6 +38,8 @@ public class BufferPool {
     private Random rnd;
     /** Manages transactions and locks. */
     private LockManager lockManager;
+    /** Maintains buffer pool page index which is occupied and clean. */
+    private Set<Integer> cleanPages;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -52,6 +56,7 @@ public class BufferPool {
         pageLookupTable = new HashMap<PageId, Integer>();
         rnd = new Random();
         lockManager = new LockManager();
+        cleanPages = new HashSet<Integer>();
     }
 
     /**
@@ -80,19 +85,32 @@ public class BufferPool {
             assert false : "should never reach here.";
             System.exit(-1);
         }
-        
-        Integer loc = pageLookupTable.get(pid);
-        if (loc != null) {
-            return bufferedPages[loc];
+        synchronized (this) {
+            Integer loc = pageLookupTable.get(pid);
+            if (loc != null) {
+                return bufferedPages[loc];
+            }
+            if (freeList.isEmpty()) {
+                evictPage();
+            }
+            int newLoc = freeList.pop();
+            int tableId = pid.getTableId();
+            if (pid.pageNumber() < ((HeapFile) Database.getCatalog().getDbFile(tableId)).numPages()) {
+                bufferedPages[newLoc] = Database.getCatalog().getDbFile(tableId).readPage(pid);
+            } else {
+                // if page is not in the heapfile, first allocate a new page in buffer pool
+                // rather than directly add a new page to the heapfile, which is needed to 
+                // support NO-STEAL policy
+                try {
+                    bufferedPages[newLoc] = new HeapPage((HeapPageId) pid, HeapPage.createEmptyPageData());
+                } catch (IOException e) {
+                    throw new DbException("Some internal errors happen.");
+                }
+            }
+            cleanPages.add(newLoc);
+            pageLookupTable.put(pid, newLoc);
+            return bufferedPages[newLoc];
         }
-        if (freeList.isEmpty()) {
-            evictPage();
-        }
-        int newLoc = freeList.pop();
-        int tableId = pid.getTableId();
-        bufferedPages[newLoc] = Database.getCatalog().getDbFile(tableId).readPage(pid);
-        pageLookupTable.put(pid, newLoc);
-        return bufferedPages[newLoc];
     }
 
     /**
@@ -114,8 +132,7 @@ public class BufferPool {
      * @param tid the ID of the transaction requesting the unlock
      */
     public void transactionComplete(TransactionId tid) throws IOException {
-        // some code goes here
-        // not necessary for proj1
+        transactionComplete(tid, true);
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
@@ -132,8 +149,25 @@ public class BufferPool {
      */
     public void transactionComplete(TransactionId tid, boolean commit)
         throws IOException {
-        // some code goes here
-        // not necessary for proj1
+        if (commit) {
+            flushPages(tid);
+        } else {
+            synchronized (this) {
+                for (PageId pid : lockManager.getAllLockingPages(tid)) {
+                    // Since we adopt NOSTEAL policy,
+                    // pid is not in pageLookupTable can infer that
+                    // pid is not dirty
+                    if (pageLookupTable.containsKey(pid)) {
+                        int i = pageLookupTable.get(pid);
+                        if (bufferedPages[i].isDirty() != null) {
+                            bufferedPages[i] = bufferedPages[i].getBeforeImage();
+                            cleanPages.add(i);
+                        }
+                    }
+                }
+            }
+        }
+        lockManager.releaseAllLocks(tid);
     }
 
     /**
@@ -204,7 +238,8 @@ public class BufferPool {
             bufferedPages[loc] = null;
             pageLookupTable.remove(pid);
             freeList.add(loc);
-        }    
+            cleanPages.remove(loc);
+        }
     }
 
     /**
@@ -221,13 +256,15 @@ public class BufferPool {
             Database.getCatalog().getDbFile(pid.getTableId()).writePage(page);
             page.markDirty(false, null);
         }
+        cleanPages.add(i);
     }
 
     /** Write all pages of the specified transaction to disk.
      */
     public synchronized void flushPages(TransactionId tid) throws IOException {
-        // some code goes here
-        // not necessary for proj1
+        for (PageId pid : lockManager.getAllLockingPages(tid)) {
+            flushPage(pid);
+        }
     }
 
     /**
@@ -236,17 +273,34 @@ public class BufferPool {
      */
     private synchronized void evictPage() throws DbException {
         // For simplicity, only implement random eviction policy;
-        int evictLoc = rnd.nextInt(numPages);
-        PageId pid = bufferedPages[evictLoc].getId();
-        try {
-            flushPage(pid);
-        } catch (IOException e) {
-            e.printStackTrace();
-            System.exit(-1);
+        if (cleanPages.size() == 0) {
+            throw new DbException("All pages in the bufferpool are dirty.");
         }
-        bufferedPages[evictLoc] = null;
-        pageLookupTable.remove(pid);
-        freeList.add(evictLoc);
+        int i = rnd.nextInt(cleanPages.size());
+        int j = 0;
+        int evictLoc = 0;
+        for (int k : cleanPages) {
+            if (j == i) {
+                evictLoc = k;
+                break;
+            }
+            j++;
+        }
+        
+        PageId pid = bufferedPages[evictLoc].getId();
+        discardPage(pid);
     }
-
+    
+    /**
+     * Inform the buffer pool that a specified page will be modified to avoid
+     * the page being evicted.
+     * 
+     * @param pid
+     *            the id of the specified page.
+     *            Require the page to be in the buffer pool.
+     */
+    synchronized void markDirty(PageId pid) {
+        Integer i = pageLookupTable.get(pid);
+        cleanPages.remove(i);
+    }
 }

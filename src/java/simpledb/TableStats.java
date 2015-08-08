@@ -99,7 +99,7 @@ public class TableStats {
             }
         }
         
-        DbFileIterator itr = df.iterator(null);
+        DbFileIterator itr = df.iterator(new TransactionId());
         try {
             itr.open();
             while (itr.hasNext()) {
