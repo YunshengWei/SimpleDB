@@ -76,14 +76,18 @@ public class BufferPool {
      */
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
-        if (perm == Permissions.READ_ONLY) {
-            lockManager.acquireReadLock(tid, pid);
-        } else if (perm == Permissions.READ_WRITE) {
-            lockManager.acquireWriteLock(tid, pid);
-        } else {
-            // Should never reach here
-            assert false : "should never reach here.";
-            System.exit(-1);
+        // Assume that tid == null is only used by test case and database system itself,
+        // so we do not acquire lock for null tid.
+        if (tid != null) {
+            if (perm == Permissions.READ_ONLY) {
+                lockManager.acquireReadLock(tid, pid);
+            } else if (perm == Permissions.READ_WRITE) {
+                lockManager.acquireWriteLock(tid, pid);
+            } else {
+                // Should never reach here
+                assert false : "should never reach here.";
+                System.exit(-1);
+            }
         }
         synchronized (this) {
             Integer loc = pageLookupTable.get(pid);
@@ -159,6 +163,11 @@ public class BufferPool {
                     // pid is not dirty
                     if (pageLookupTable.containsKey(pid)) {
                         int i = pageLookupTable.get(pid);
+                        HeapFile hf = (HeapFile) Database.getCatalog().getDbFile(pid.getTableId());
+                        if (pid.pageNumber() >= hf.getDiskFileNumPages()) {
+                            hf.resetNumPages();
+                        }
+                        
                         if (bufferedPages[i].isDirty() != null) {
                             bufferedPages[i] = bufferedPages[i].getBeforeImage();
                             cleanPages.add(i);

@@ -121,7 +121,24 @@ public class HeapFile implements DbFile {
     private synchronized void incrementNumPages() {
         numPages++;
     }
+    
+    /**
+     * Reset numPages to the number of pages of the heapfile on disk.
+     * All modification to numPages variable should use this synchronized method.
+     * This method is used by BufferPool.transactionComplete() to ensure aborted
+     * transactions which add new pages do not have actual effects on the heapfile.
+     */
+    public synchronized void resetNumPages() {
+        numPages = (int) (file.length() / BufferPool.PAGE_SIZE);
+    }
 
+    /**
+     * @return the actual number of pages of the heapfile on disk 
+     */
+    public int getDiskFileNumPages() {
+        return (int) (file.length() / BufferPool.PAGE_SIZE);
+    }
+    
     // see DbFile.java for javadocs
     public ArrayList<Page> insertTuple(TransactionId tid, Tuple t)
             throws DbException, IOException, TransactionAbortedException {

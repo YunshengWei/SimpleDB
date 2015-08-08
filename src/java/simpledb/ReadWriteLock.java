@@ -34,7 +34,7 @@ public class ReadWriteLock {
             wait();
         }
 
-        readingTids.put(tid, (getReadAccessCount(tid) + 1));
+        readingTids.put(tid, 1);
     }
 
     private boolean canGrantReadAccess(TransactionId tid) {
@@ -55,12 +55,7 @@ public class ReadWriteLock {
                     "Calling TransactionId does not"
                             + " hold a read lock on this ReadWriteLock");
         }
-        int accessCount = getReadAccessCount(tid);
-        if (accessCount == 1) {
-            readingTids.remove(tid);
-        } else {
-            readingTids.put(tid, accessCount - 1);
-        }
+        readingTids.remove(tid);
         notifyAll();
     }
 
@@ -71,7 +66,7 @@ public class ReadWriteLock {
             wait();
         }
         writeRequests--;
-        writeAccesses++;
+        writeAccesses = 1;
         writingTid = tid;
     }
 
@@ -81,10 +76,8 @@ public class ReadWriteLock {
                     "Calling TransactionId does not"
                             + " hold the write lock on this ReadWriteLock");
         }
-        writeAccesses--;
-        if (writeAccesses == 0) {
-            writingTid = null;
-        }
+        writeAccesses = 0;
+        writingTid = null;
         notifyAll();
     }
 
@@ -98,13 +91,6 @@ public class ReadWriteLock {
         if (!isWriter(tid))
             return false;
         return true;
-    }
-
-    private int getReadAccessCount(TransactionId tid) {
-        Integer accessCount = readingTids.get(tid);
-        if (accessCount == null)
-            return 0;
-        return accessCount.intValue();
     }
 
     private boolean hasReaders() {
