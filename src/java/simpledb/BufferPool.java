@@ -40,6 +40,8 @@ public class BufferPool {
     private LockManager lockManager;
     /** Maintains buffer pool page index which is occupied and clean. */
     private Set<Integer> cleanPages;
+    /** how long is it considered as a deadlock */
+    private static final int TIMEOUT = 2000;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -55,7 +57,7 @@ public class BufferPool {
         }
         pageLookupTable = new HashMap<PageId, Integer>();
         rnd = new Random();
-        lockManager = new LockManager();
+        lockManager = new LockManager(BufferPool.TIMEOUT);
         cleanPages = new HashSet<Integer>();
     }
 
@@ -79,6 +81,7 @@ public class BufferPool {
         // Assume that tid == null is only used by test case and database system itself,
         // so we do not acquire lock for null tid.
         if (tid != null) {
+            try {
             if (perm == Permissions.READ_ONLY) {
                 lockManager.acquireReadLock(tid, pid);
             } else if (perm == Permissions.READ_WRITE) {
@@ -86,6 +89,13 @@ public class BufferPool {
             } else {
                 // Should never reach here
                 assert false : "should never reach here.";
+                System.exit(-1);
+            }
+            } catch (TransactionAbortedException e) {
+                System.err.println(tid);
+                throw new TransactionAbortedException();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
                 System.exit(-1);
             }
         }

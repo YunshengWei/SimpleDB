@@ -14,12 +14,17 @@ import java.util.concurrent.ConcurrentMap;
  */
 public class LockManager {
 
+    /** how long is it considered as a deadlock */
+    private final int timeout;
     /** Maps PageId to its associated ReadWriteLock */
-    private ConcurrentMap<PageId, ReadWriteLock> lockMap;
+    private final ConcurrentMap<PageId, ReadWriteLock> lockMap;
     /** Maintains information about which locks a transaction holds */
-    private ConcurrentMap<TransactionId, Set<ReadWriteLock>> transLocksMap;
+    private final ConcurrentMap<TransactionId, Set<ReadWriteLock>> transLocksMap;
+    /** Maintains information about transaction locking dependency */
+    private final WaitsForGraph wfGraph;
 
-    public LockManager() {
+    public LockManager(int timeout) {
+        this.timeout = timeout;
         lockMap = new ConcurrentHashMap<PageId, ReadWriteLock>();
         transLocksMap = new ConcurrentHashMap<TransactionId, Set<ReadWriteLock>>();
     }
@@ -32,7 +37,7 @@ public class LockManager {
     public ReadWriteLock getReadWriteLock(PageId pid) {
         ReadWriteLock rwl = lockMap.get(pid);
         if (rwl == null) {
-            lockMap.putIfAbsent(pid, new ReadWriteLock(pid));
+            lockMap.putIfAbsent(pid, new ReadWriteLock(pid, timeout));
             rwl = lockMap.get(pid);
         }
         return rwl;
@@ -46,17 +51,13 @@ public class LockManager {
      *            id of the transaction requesting the lock
      * @param pid
      *            id of the page to acquire read lock for
+     * @throws InterruptedException
+     * @throws TransactionAbortedException 
      */
-    public void acquireReadLock(TransactionId tid, PageId pid) {
+    public void acquireReadLock(TransactionId tid, PageId pid)
+            throws InterruptedException, TransactionAbortedException {
         ReadWriteLock rwl = getReadWriteLock(pid);
-        try {
-            rwl.lockRead(tid);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-            // Terminate current thread
-            throw new RuntimeException(String.format("Thread %s interrupted",
-                    Thread.currentThread()));
-        }
+        rwl.lockRead(tid);
         Set<ReadWriteLock> locks = transLocksMap.getOrDefault(tid,
                 new HashSet<ReadWriteLock>());
         locks.add(rwl);
@@ -71,20 +72,16 @@ public class LockManager {
      *            id of the transaction requesting the lock
      * @param pid
      *            id of the page to acquire write lock for
+     * @throws InterruptedException
+     * @throws TransactionAbortedException 
      */
-    public void acquireWriteLock(TransactionId tid, PageId pid) {
+    public void acquireWriteLock(TransactionId tid, PageId pid)
+            throws InterruptedException, TransactionAbortedException {
         ReadWriteLock rwl = getReadWriteLock(pid);
         // Must release read lock before acquiring write lock
         Set<ReadWriteLock> locks = transLocksMap.getOrDefault(tid,
                 new HashSet<ReadWriteLock>());
-        try {
-            rwl.lockWrite(tid);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-            // Terminate current thread
-            throw new RuntimeException(String.format("Thread %s interrupted",
-                    Thread.currentThread()));
-        }
+        rwl.lockWrite(tid);
         locks.add(rwl);
         transLocksMap.put(tid, locks);
     }

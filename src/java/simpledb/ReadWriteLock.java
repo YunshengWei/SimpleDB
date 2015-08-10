@@ -11,27 +11,34 @@ public class ReadWriteLock {
 
     /** Indicate which PageId this ReadWriteLock is associated with */
     private PageId pid;
-    
+
     private Map<TransactionId, Integer> readingTids = new HashMap<TransactionId, Integer>();
     private int writeAccesses = 0;
     private int writeRequests = 0;
     private TransactionId writingTid = null;
+    // how long is it considered a deadlock
+    private final int timeout;
 
-    public ReadWriteLock(PageId pid) {
+    public ReadWriteLock(PageId pid, int timeout) {
         this.pid = pid;
+        this.timeout = timeout;
     }
-    
+
     /**
      * @return the PageId this lock is associated with
      */
     public PageId getPageId() {
         return pid;
     }
-    
+
     public synchronized void lockRead(TransactionId tid)
-            throws InterruptedException {
+            throws InterruptedException, TransactionAbortedException {
         while (!canGrantReadAccess(tid)) {
-            wait();
+            long startTime = System.currentTimeMillis();
+            wait(timeout);
+            if (System.currentTimeMillis() - startTime >= timeout) {
+                throw new TransactionAbortedException();
+            }
         }
 
         readingTids.put(tid, 1);
@@ -60,10 +67,14 @@ public class ReadWriteLock {
     }
 
     public synchronized void lockWrite(TransactionId tid)
-            throws InterruptedException {
+            throws InterruptedException, TransactionAbortedException {
         writeRequests++;
         while (!canGrantWriteAccess(tid)) {
-            wait();
+            long startTime = System.currentTimeMillis();
+            wait(timeout);
+            if (System.currentTimeMillis() - startTime >= timeout) {
+                throw new TransactionAbortedException();
+            }
         }
         writeRequests--;
         writeAccesses = 1;
