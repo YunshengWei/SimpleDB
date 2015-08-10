@@ -41,7 +41,7 @@ public class BufferPool {
     /** Maintains buffer pool page index which is occupied and clean. */
     private Set<Integer> cleanPages;
     /** how long is it considered as a deadlock */
-    private static final int TIMEOUT = 2000;
+    private static final int TIMEOUT = 200;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -82,17 +82,16 @@ public class BufferPool {
         // so we do not acquire lock for null tid.
         if (tid != null) {
             try {
-            if (perm == Permissions.READ_ONLY) {
-                lockManager.acquireReadLock(tid, pid);
-            } else if (perm == Permissions.READ_WRITE) {
-                lockManager.acquireWriteLock(tid, pid);
-            } else {
-                // Should never reach here
-                assert false : "should never reach here.";
-                System.exit(-1);
-            }
+                if (perm == Permissions.READ_ONLY) {
+                    lockManager.acquireReadLock(tid, pid);
+                } else if (perm == Permissions.READ_WRITE) {
+                    lockManager.acquireWriteLock(tid, pid);
+                } else {
+                    // Should never reach here
+                    assert false : "should never reach here.";
+                    System.exit(-1);
+                }
             } catch (TransactionAbortedException e) {
-                System.err.println(tid);
                 throw new TransactionAbortedException();
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -137,7 +136,7 @@ public class BufferPool {
      * @param pid the ID of the page to unlock
      */
     public void releasePage(TransactionId tid, PageId pid) {
-        lockManager.releasePage(tid, pid);
+        lockManager.releaseLockAndRequest(tid, pid);
     }
 
     /**
@@ -186,7 +185,7 @@ public class BufferPool {
                 }
             }
         }
-        lockManager.releaseAllLocks(tid);
+        lockManager.releaseAllLocksAndRequests(tid);
     }
 
     /**

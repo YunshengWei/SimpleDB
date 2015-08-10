@@ -1,20 +1,22 @@
 package simpledb;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * ReadWriteLock is a modified Reentrant Lock implementation which supports
  * transaction. It can support several threads running one transaction.
+ * ReadWriteLock proritizes write request over read request. ReadWriteLock adopt
+ * a timeout based method to detect deadlocks (A better method is waits-for
+ * graph, but much more complicated).
  */
 public class ReadWriteLock {
 
     /** Indicate which PageId this ReadWriteLock is associated with */
     private PageId pid;
 
-    private Map<TransactionId, Integer> readingTids = new HashMap<TransactionId, Integer>();
-    private int writeAccesses = 0;
-    private int writeRequests = 0;
+    private Set<TransactionId> readingTids = new HashSet<>();
+    private Set<TransactionId> writeRequestSet = new HashSet<>();
     private TransactionId writingTid = null;
     // how long is it considered a deadlock
     private final int timeout;
@@ -31,6 +33,10 @@ public class ReadWriteLock {
         return pid;
     }
 
+    public synchronized void cancelLockRequests(TransactionId tid) {
+        writeRequestSet.remove(tid);
+    }
+    
     public synchronized void lockRead(TransactionId tid)
             throws InterruptedException, TransactionAbortedException {
         while (!canGrantReadAccess(tid)) {
@@ -41,7 +47,7 @@ public class ReadWriteLock {
             }
         }
 
-        readingTids.put(tid, 1);
+        readingTids.add(tid);
     }
 
     private boolean canGrantReadAccess(TransactionId tid) {
@@ -68,7 +74,7 @@ public class ReadWriteLock {
 
     public synchronized void lockWrite(TransactionId tid)
             throws InterruptedException, TransactionAbortedException {
-        writeRequests++;
+        writeRequestSet.add(tid);
         while (!canGrantWriteAccess(tid)) {
             long startTime = System.currentTimeMillis();
             wait(timeout);
@@ -76,8 +82,7 @@ public class ReadWriteLock {
                 throw new TransactionAbortedException();
             }
         }
-        writeRequests--;
-        writeAccesses = 1;
+        writeRequestSet.remove(tid);
         writingTid = tid;
     }
 
@@ -87,7 +92,6 @@ public class ReadWriteLock {
                     "Calling TransactionId does not"
                             + " hold the write lock on this ReadWriteLock");
         }
-        writeAccesses = 0;
         writingTid = null;
         notifyAll();
     }
@@ -109,11 +113,11 @@ public class ReadWriteLock {
     }
 
     public synchronized boolean isReader(TransactionId tid) {
-        return readingTids.get(tid) != null;
+        return readingTids.contains(tid);
     }
 
     private boolean isOnlyReader(TransactionId tid) {
-        return readingTids.size() == 1 && readingTids.get(tid) != null;
+        return readingTids.size() == 1 && readingTids.contains(tid);
     }
 
     private boolean hasWriter() {
@@ -125,7 +129,7 @@ public class ReadWriteLock {
     }
 
     private boolean hasWriteRequests() {
-        return this.writeRequests > 0;
+        return writeRequestSet.size() > 0;
     }
 
 }
