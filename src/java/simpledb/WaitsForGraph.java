@@ -1,11 +1,12 @@
 package simpledb;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
 public class WaitsForGraph {
     
-    Map<TransactionId, Node> nodes;
+    Map<TransactionId, Node> nodes = new HashMap<>();
     
     private class Node {
         TransactionId tid;

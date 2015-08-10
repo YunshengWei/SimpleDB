@@ -40,8 +40,6 @@ public class BufferPool {
     private LockManager lockManager;
     /** Maintains buffer pool page index which is occupied and clean. */
     private Set<Integer> cleanPages;
-    /** how long is it considered as a deadlock */
-    private static final int TIMEOUT = 2000;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -57,7 +55,7 @@ public class BufferPool {
         }
         pageLookupTable = new HashMap<PageId, Integer>();
         rnd = new Random();
-        lockManager = new LockManager(BufferPool.TIMEOUT);
+        lockManager = new LockManager();
         cleanPages = new HashSet<Integer>();
     }
 

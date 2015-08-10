@@ -14,8 +14,6 @@ import java.util.concurrent.ConcurrentMap;
  */
 public class LockManager {
 
-    /** how long is it considered as a deadlock */
-    private final int timeout;
     /** Maps PageId to its associated ReadWriteLock */
     private final ConcurrentMap<PageId, ReadWriteLock> lockMap;
     /** Maintains information about which locks a transaction holds */
@@ -23,10 +21,10 @@ public class LockManager {
     /** Maintains information about transaction locking dependency */
     private final WaitsForGraph wfGraph;
 
-    public LockManager(int timeout) {
-        this.timeout = timeout;
+    public LockManager() {
         lockMap = new ConcurrentHashMap<PageId, ReadWriteLock>();
         transLocksMap = new ConcurrentHashMap<TransactionId, Set<ReadWriteLock>>();
+        wfGraph = new WaitsForGraph();
     }
 
     /**
@@ -37,7 +35,7 @@ public class LockManager {
     public ReadWriteLock getReadWriteLock(PageId pid) {
         ReadWriteLock rwl = lockMap.get(pid);
         if (rwl == null) {
-            lockMap.putIfAbsent(pid, new ReadWriteLock(pid, timeout));
+            lockMap.putIfAbsent(pid, new ReadWriteLock(pid, wfGraph));
             rwl = lockMap.get(pid);
         }
         return rwl;

@@ -1,27 +1,64 @@
 package simpledb;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.Queue;
+import java.util.Set;
 
-/**
- * ReadWriteLock is a modified Reentrant Lock implementation which supports
- * transaction. It can support several threads running one transaction.
- */
 public class ReadWriteLock {
 
+    // nested enum is implicitly static
+    private static enum LockType {
+        READ, WRITE;
+    }
+    
+    private static class LockRequest {
+        TransactionId tid;
+        LockType lt;
+        
+        LockRequest(TransactionId tid, LockType lt) {
+            this.tid = tid;
+            this.lt = lt;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj == this) {
+                return true;
+            }
+            if (!(obj instanceof LockRequest)) {
+                return false;
+            } else {
+                LockRequest that = (LockRequest) obj;
+                return that.tid.equals(this.tid) && that.lt == this.lt;
+            }
+        }
+
+        @Override
+        public int hashCode() {
+            // TODO Auto-generated method stub
+            return super.hashCode();
+        }
+    }
+    
     /** Indicate which PageId this ReadWriteLock is associated with */
     private PageId pid;
 
-    private Map<TransactionId, Integer> readingTids = new HashMap<TransactionId, Integer>();
+    private Set<TransactionId> currentlyAccessTids = new HashSet<>();
+    private LockType currentlyHeldLockType;
+    private Queue<LockRequest> lockRequestQueue = new LinkedList<>();
+    
+    private Set<TransactionId> readingTids = new HashSet<>();
     private int writeAccesses = 0;
     private int writeRequests = 0;
     private TransactionId writingTid = null;
-    // how long is it considered a deadlock
-    private final int timeout;
+    private final WaitsForGraph wfGraph;
+    private final Set<TransactionId> writeRequestSet = new HashSet<>();
 
-    public ReadWriteLock(PageId pid, int timeout) {
+    public ReadWriteLock(PageId pid, WaitsForGraph wfGraph) {
         this.pid = pid;
-        this.timeout = timeout;
+        this.wfGraph = wfGraph;
     }
 
     /**
@@ -33,27 +70,50 @@ public class ReadWriteLock {
 
     public synchronized void lockRead(TransactionId tid)
             throws InterruptedException, TransactionAbortedException {
-        while (!canGrantReadAccess(tid)) {
-            long startTime = System.currentTimeMillis();
-            wait(timeout);
-            if (System.currentTimeMillis() - startTime >= timeout) {
-                throw new TransactionAbortedException();
+        if (isWriter(tid) || isReader(tid)) {
+            return;
+        }
+        
+        // Very Very Tricky here!!!
+        LockRequest lockRequest = new LockRequest(tid, LockType.READ);
+        lockRequestQueue.add(lockRequest);
+        while (true) {
+            boolean canGrantReadAccess = true;
+            if (currentlyHeldLockType == LockType.WRITE) {
+                canGrantReadAccess = false;
+            } else {
+                for (LockRequest lr : lockRequestQueue) {
+                    if (lr.lt == LockType.WRITE) {
+                        canGrantReadAccess = false;
+                        break;
+                    }
+                }
+            }
+            if (canGrantReadAccess) {
+                lockRequestQueue.remove(lockRequest);
+                currentlyHeldLockType = LockType.READ;
+                currentlyAccessTids.add(tid);
+            } else {
+                wait();
             }
         }
-
-        readingTids.put(tid, 1);
+        
+    }
+    
+    public synchronized void lockWrite(Transaction tid) {
+        
     }
 
-    private boolean canGrantReadAccess(TransactionId tid) {
+    private Set<TransactionId> canGrantReadAccess(TransactionId tid) {
         if (isWriter(tid))
-            return true;
+            return Collections.emptySet();
         if (hasWriter())
-            return false;
+            return Collections.singleton(writingTid);
         if (isReader(tid))
-            return true;
+            return Collections.emptySet();
         if (hasWriteRequests())
-            return false;
-        return true;
+            return writeRequestSet;
+        return Collections.emptySet();;
     }
 
     public synchronized void unlockRead(TransactionId tid) {
@@ -69,12 +129,9 @@ public class ReadWriteLock {
     public synchronized void lockWrite(TransactionId tid)
             throws InterruptedException, TransactionAbortedException {
         writeRequests++;
-        while (!canGrantWriteAccess(tid)) {
-            long startTime = System.currentTimeMillis();
-            wait(timeout);
-            if (System.currentTimeMillis() - startTime >= timeout) {
-                throw new TransactionAbortedException();
-            }
+        while (canGrantWriteAccess(tid) != null) {
+            
+            wait();
         }
         writeRequests--;
         writeAccesses = 1;
@@ -92,16 +149,19 @@ public class ReadWriteLock {
         notifyAll();
     }
 
-    private boolean canGrantWriteAccess(TransactionId tid) {
+    /**
+     * @return the set of transactions a specified transaction is waiting for
+     */
+    private Set<TransactionId> canGrantWriteAccess(TransactionId tid) {
         if (isOnlyReader(tid))
-            return true;
+            return Collections.emptySet();
         if (hasReaders())
-            return false;
+            return readingTids;
         if (writingTid == null)
-            return true;
+            return Collections.emptySet();
         if (!isWriter(tid))
-            return false;
-        return true;
+            return Collections.singleton(writingTid);
+        return Collections.emptySet();;
     }
 
     private boolean hasReaders() {
@@ -109,11 +169,11 @@ public class ReadWriteLock {
     }
 
     public synchronized boolean isReader(TransactionId tid) {
-        return readingTids.get(tid) != null;
+        return readingTids.contains(tid);
     }
 
     private boolean isOnlyReader(TransactionId tid) {
-        return readingTids.size() == 1 && readingTids.get(tid) != null;
+        return readingTids.size() == 1 && readingTids.contains(tid);
     }
 
     private boolean hasWriter() {
